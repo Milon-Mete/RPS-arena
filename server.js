@@ -9,12 +9,12 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: 'http://localhost:3000',
     methods: ['GET', 'POST']
   }
 });
 
-const rooms = {}; // roomId => { players: [], choices: {}, timers: {} }
+const rooms = {};
 
 io.on('connection', (socket) => {
   console.log(`🔗 New connection: ${socket.id}`);
@@ -34,29 +34,42 @@ io.on('connection', (socket) => {
     if (!rooms[roomId]) return;
     rooms[roomId].choices[socket.id] = choice;
 
-    // Notify opponent that player made a move
     notifyOpponentMove(roomId, socket.id);
 
-    // Start countdown timer if this is the first move
     if (Object.keys(rooms[roomId].choices).length === 1) {
       startChoiceTimer(roomId);
     }
 
-    // If both players have made a move, resolve the round
     if (Object.keys(rooms[roomId].choices).length === 2) {
       finishRound(roomId);
     }
   });
 
-  // Chat functionality
   socket.on('chat_message', ({ roomId, name, message }) => {
     io.to(roomId).emit('chat_message', { name, message });
+  });
+
+  socket.on('signal', ({ roomId, target, signal }) => {
+    io.to(target).emit('signal', { sender: socket.id, signal });
+  });
+
+  socket.on('leave_room', ({ roomId }) => {
+    if (rooms[roomId]) {
+      rooms[roomId].players = rooms[roomId].players.filter(p => p.id !== socket.id);
+      delete rooms[roomId].choices[socket.id];
+      if (rooms[roomId].players.length === 0) {
+        clearTimeout(rooms[roomId].timers.choice);
+        delete rooms[roomId];
+      } else {
+        io.to(roomId).emit('players_update', rooms[roomId].players);
+      }
+    }
   });
 
   socket.on('disconnect', () => {
     for (const roomId in rooms) {
       const room = rooms[roomId];
-      room.players = room.players.filter((p) => p.id !== socket.id);
+      room.players = room.players.filter(p => p.id !== socket.id);
       delete room.choices[socket.id];
 
       if (room.players.length === 0) {
@@ -94,7 +107,7 @@ function startChoiceTimer(roomId) {
     });
 
     finishRound(roomId);
-  }, 10000); // 10 seconds
+  }, 10000);
 }
 
 function finishRound(roomId) {
@@ -113,7 +126,7 @@ function finishRound(roomId) {
     [p2.id]: { choice: c2, result: result[1] }
   });
 
-  room.choices = {}; // Reset choices for next round
+  room.choices = {};
 }
 
 function getRandomChoice() {
