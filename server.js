@@ -50,6 +50,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('signal', ({ roomId, target, signal }) => {
+    console.log(`Relaying signal to ${target}`);
     io.to(target).emit('signal', { sender: socket.id, signal });
   });
 
@@ -63,10 +64,12 @@ io.on('connection', (socket) => {
       } else {
         io.to(roomId).emit('players_update', rooms[roomId].players);
       }
+      console.log(`Player ${socket.id} left room ${roomId}`);
     }
   });
 
   socket.on('disconnect', () => {
+    console.log(`Player ${socket.id} disconnected`);
     for (const roomId in rooms) {
       const room = rooms[roomId];
       room.players = room.players.filter(p => p.id !== socket.id);
